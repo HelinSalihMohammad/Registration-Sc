@@ -1,17 +1,18 @@
-document.addEventListener("DOMContentLoaded", function() {
+document.addEventListener("DOMContentLoaded", function () {
   const video = document.getElementById("video");
   const canvas = document.getElementById("canvas");
   const context = canvas.getContext("2d");
+  let isScanning = true; // Flag to control scanning behavior
 
   // Get user media (camera)
   navigator.mediaDevices
     .getUserMedia({ video: { facingMode: "environment" } })
-    .then(function(stream) {
+    .then(function (stream) {
       video.srcObject = stream;
       video.setAttribute("playsinline", true); // Required for iOS Safari
       video.play();
     })
-    .catch(function(err) {
+    .catch(function (err) {
       console.error("Error accessing camera: " + err);
     });
 
@@ -28,13 +29,15 @@ document.addEventListener("DOMContentLoaded", function() {
       // Get image data from canvas
       const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
       const code = jsQR(imageData.data, canvas.width, canvas.height);
-      
-      if (code) {
+
+      if (code && isScanning) {
         const qrCodeData = code.data;
-        
+        isScanning = false; // Stop further scanning until processed
+
         // Check if the QR code has been scanned before (stored in localStorage)
         if (localStorage.getItem(qrCodeData)) {
           alert("This QR Code has already been used.");
+          isScanning = true; // Reset scanning after alert
         } else {
           alert("QR Code Scanned: " + qrCodeData); // Display the decoded QR code data
 
@@ -42,19 +45,25 @@ document.addEventListener("DOMContentLoaded", function() {
           localStorage.setItem(qrCodeData, "used");
 
           // Send the QR code data to Google Sheets (via Apps Script Web App)
-          fetch('https://script.google.com/macros/s/AKfycbzBVy9dRQFh8CjySBBqvrYRqQBFNX51lEutUtDOJWJA6o93vZiIEOwdXho8JeQXtTnmOA/exec', {
-            method: 'POST',
+          fetch("https://script.google.com/macros/s/AKfycbzBVy9dRQFh8CjySBBqvrYRqQBFNX51lEutUtDOJWJA6o93vZiIEOwdXho8JeQXtTnmOA/exec", {
+            method: "POST",
             body: new URLSearchParams({
-              qrCode: qrCodeData  // Send the scanned QR code data
+              qrCode: qrCodeData, // Send the scanned QR code data
+            }),
+          })
+            .then((response) => response.text())
+            .then((responseData) => {
+              console.log(responseData); // Log the response from the server
+              alert("QR Code data sent successfully.");
             })
-          })
-          .then(response => response.text())
-          .then(responseData => {
-            console.log(responseData); // Log the response from the server
-          })
-          .catch(error => {
-            console.error('Error:', error); // Handle any errors
-          });
+            .catch((error) => {
+              console.error("Error:", error); // Handle any errors
+              alert("Failed to send QR code data. Please try again.");
+            })
+            .finally(() => {
+              // Allow scanning again after processing
+              isScanning = true;
+            });
         }
       }
     }
@@ -64,7 +73,7 @@ document.addEventListener("DOMContentLoaded", function() {
   }
 
   // Start scanning when the video is playing
-  video.addEventListener("play", function() {
+  video.addEventListener("play", function () {
     scanQRCode();
   });
 });

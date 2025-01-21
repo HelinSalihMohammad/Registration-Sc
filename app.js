@@ -1,8 +1,11 @@
+
+
+
 document.addEventListener("DOMContentLoaded", function () {
   const video = document.getElementById("video");
   const canvas = document.getElementById("canvas");
   const context = canvas.getContext("2d");
-  let isScanning = true; // Flag to control scanning behavior
+  let isScanning = true; // To control when scanning occurs
 
   // Get user media (camera)
   navigator.mediaDevices
@@ -16,9 +19,46 @@ document.addEventListener("DOMContentLoaded", function () {
       console.error("Error accessing camera: " + err);
     });
 
+  // Function to display a message and wait for user interaction
+  function showMessage(message) {
+    return new Promise((resolve) => {
+      // Show a custom modal or dialog
+      const modal = document.createElement("div");
+      modal.style.position = "fixed";
+      modal.style.top = "50%";
+      modal.style.left = "50%";
+      modal.style.transform = "translate(-50%, -50%)";
+      modal.style.backgroundColor = "#fff";
+      modal.style.padding = "20px";
+      modal.style.boxShadow = "0 4px 6px rgba(0,0,0,0.1)";
+      modal.style.zIndex = "9999";
+      modal.style.textAlign = "center";
+
+      const text = document.createElement("p");
+      text.innerText = message;
+      modal.appendChild(text);
+
+      const button = document.createElement("button");
+      button.innerText = "OK";
+      button.style.marginTop = "10px";
+      button.style.padding = "10px 20px";
+      button.style.border = "none";
+      button.style.backgroundColor = "#007BFF";
+      button.style.color = "#fff";
+      button.style.cursor = "pointer";
+      button.onclick = function () {
+        modal.remove();
+        resolve(); // Proceed to resume scanning
+      };
+
+      modal.appendChild(button);
+      document.body.appendChild(modal);
+    });
+  }
+
   // Function to scan the video frame for QR code
-  function scanQRCode() {
-    if (video.readyState === video.HAVE_ENOUGH_DATA) {
+  async function scanQRCode() {
+    if (video.readyState === video.HAVE_ENOUGH_DATA && isScanning) {
       // Set canvas size to match video size
       canvas.height = video.videoHeight;
       canvas.width = video.videoWidth;
@@ -30,41 +70,38 @@ document.addEventListener("DOMContentLoaded", function () {
       const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
       const code = jsQR(imageData.data, canvas.width, canvas.height);
 
-      if (code && isScanning) {
+      if (code) {
         const qrCodeData = code.data;
-        isScanning = false; // Stop further scanning until processed
+        isScanning = false; // Stop scanning until the message is handled
 
-        // Check if the QR code has been scanned before (stored in localStorage)
         if (localStorage.getItem(qrCodeData)) {
-          alert("This QR Code has already been used.");
-          isScanning = true; // Reset scanning after alert
+          await showMessage("This QR Code has already been used.");
         } else {
-          alert("QR Code Scanned: " + qrCodeData); // Display the decoded QR code data
+          await showMessage("QR Code Scanned: " + qrCodeData);
 
           // Mark the QR code as used by saving it in localStorage
           localStorage.setItem(qrCodeData, "used");
 
           // Send the QR code data to Google Sheets (via Apps Script Web App)
-          fetch("https://script.google.com/macros/s/AKfycbzBVy9dRQFh8CjySBBqvrYRqQBFNX51lEutUtDOJWJA6o93vZiIEOwdXho8JeQXtTnmOA/exec", {
-            method: "POST",
-            body: new URLSearchParams({
-              qrCode: qrCodeData, // Send the scanned QR code data
-            }),
-          })
+          fetch(
+           "https://script.google.com/macros/s/AKfycbzBVy9dRQFh8CjySBBqvrYRqQBFNX51lEutUtDOJWJA6o93vZiIEOwdXho8JeQXtTnmOA/exec",
+            {
+              method: "POST",
+              body: new URLSearchParams({
+                qrCode: qrCodeData, // Send the scanned QR code data
+              }),
+            }
+          )
             .then((response) => response.text())
             .then((responseData) => {
               console.log(responseData); // Log the response from the server
-              alert("QR Code data sent successfully.");
             })
             .catch((error) => {
               console.error("Error:", error); // Handle any errors
-              alert("Failed to send QR code data. Please try again.");
-            })
-            .finally(() => {
-              // Allow scanning again after processing
-              isScanning = true;
             });
         }
+
+        isScanning = true; // Resume scanning after message is handled
       }
     }
 
